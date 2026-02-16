@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+.pnpm
+**/.pnpm
+.next
+**/.next
+out
+**/out
+.env
+**/.env
+.env.local
+**/.env.local

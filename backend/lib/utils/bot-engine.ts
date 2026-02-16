@@ -1,0 +1,155 @@
+import { PrismaClient } from '@prisma/client';
+import {
+  normalizeText,
+  expandSynonyms,
+  tokenize,
+  calculateSimilarity,
+} from './text';
+
+const prisma = new PrismaClient();
+
+interface IntentDetectionResult {
+  intentId: string | null;
+  intentName: string | null;
+  confidence: number;
+  matchType: 'exact' | 'partial' | 'similarity' | 'none';
+}
+
+export async function detectIntent(
+  userInput: string,
+  deviceScope: string
+): Promise<IntentDetectionResult> {
+  const normalized = normalizeText(userInput);
+  const expanded = expandSynonyms(normalized);
+  const tokens = tokenize(expanded);
+
+  // 1. Intentar coincidencia exacta
+  const exactMatch = await prisma.intentPhrase.findFirst({
+    where: {
+      phrase: {
+        equals: expanded,
+      },
+      intent: {
+        deviceScope: {
+          in: [deviceScope, 'all'],
+        },
+      },
+    },
+    include: {
+      intent: true,
+    },
+  });
+
+  if (exactMatch) {
+    return {
+      intentId: exactMatch.intent.id,
+      intentName: exactMatch.intent.name,
+      confidence: 1.0,
+      matchType: 'exact',
+    };
+  }
+
+  // 2. Intentar coincidencia parcial (uno o más tokens)
+  const allPhrases = await prisma.intentPhrase.findMany({
+    include: {
+      intent: {
+        where: {
+          deviceScope: {
+            in: [deviceScope, 'all'],
+          },
+        },
+      },
+    },
+  });
+
+  const candidatesMap = new Map<
+    string,
+    { intent: any; maxSimilarity: number }
+  >();
+
+  for (const phraseRecord of allPhrases) {
+    if (!phraseRecord.intent) continue;
+
+    const similarity = calculateSimilarity(expanded, phraseRecord.phrase);
+
+    if (similarity > 0.3) {
+      // Umbral de similitud
+      const existing = candidatesMap.get(phraseRecord.intent.id);
+      if (!existing || similarity > existing.maxSimilarity) {
+        candidatesMap.set(phraseRecord.intent.id, {
+          intent: phraseRecord.intent,
+          maxSimilarity: similarity,
+        });
+      }
+    }
+  }
+
+  if (candidatesMap.size > 0) {
+    let bestMatch = { similarity: 0, intent: null as any };
+    for (const [_, candidate] of candidatesMap.entries()) {
+      if (candidate.maxSimilarity > bestMatch.similarity) {
+        bestMatch = {
+          similarity: candidate.maxSimilarity,
+          intent: candidate.intent,
+        };
+      }
+    }
+
+    if (bestMatch.intent) {
+      return {
+        intentId: bestMatch.intent.id,
+        intentName: bestMatch.intent.name,
+        confidence: bestMatch.similarity,
+        matchType: 'similarity',
+      };
+    }
+  }
+
+  // 3. Sin coincidencia
+  return {
+    intentId: null,
+    intentName: null,
+    confidence: 0,
+    matchType: 'none',
+  };
+}
+
+// Obtener respuesta para una intención
+export async function getIntentResponse(
+  intentId: string,
+  device: string
+): Promise<{ answerText: string; videoId?: string; stepsJson?: string }> {
+  const intent = await prisma.intent.findUnique({
+    where: { id: intentId },
+    include: {
+      videos: {
+        where: {
+          device: device,
+        },
+      },
+      guides: true,
+    },
+  });
+
+  if (!intent) {
+    return {
+      answerText: 'Lo sentimos, no entendemos tu pregunta. Intenta de otra manera.',
+    };
+  }
+
+  const response: any = {
+    answerText: intent.answerText,
+  };
+
+  // Si hay video para este dispositivo, devolver video ID
+  if (intent.videos && intent.videos.length > 0 && intent.videos[0].youtubeId) {
+    response.videoId = intent.videos[0].youtubeId;
+  }
+
+  // Si no hay video, devolver guía textual
+  if (!response.videoId && intent.guides && intent.guides.length > 0) {
+    response.stepsJson = intent.guides[0].stepsJson;
+  }
+
+  return response;
+}

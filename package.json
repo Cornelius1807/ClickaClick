@@ -1,0 +1,26 @@
+{
+  "name": "clickaclick-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de alfabetización digital para adultos mayores en Perú",
+  "scripts": {
+    "dev": "pnpm --filter=@clickaclick/frontend dev & pnpm --filter=@clickaclick/backend dev",
+    "build": "pnpm --filter=@clickaclick/frontend build && pnpm --filter=@clickaclick/backend build",
+    "start": "pnpm --filter=@clickaclick/backend start",
+    "lint": "pnpm --filter=./packages -r exec eslint .",
+    "type-check": "pnpm --filter=./packages -r exec tsc --noEmit"
+  },
+  "keywords": [
+    "adultos-mayores",
+    "alfabetizacion-digital",
+    "peru",
+    "nextjs",
+    "typescript"
+  ],
+  "author": "ClickaClick Team",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "packageManager": "pnpm@8.13.1"
+}
