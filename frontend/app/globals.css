@@ -12,3 +12,83 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
 }
+
+/* Typing indicator animation */
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-8px); }
+}
+
+.typing-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #6b7280;
+  animation: typingBounce 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Typewriter fade-in effect */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.typewriter-char {
+  display: inline;
+  opacity: 0;
+  animation: fadeInUp 0.03s forwards;
+}
+
+/* Nieto wave animation */
+@keyframes gentleWave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(12deg); }
+  75% { transform: rotate(-12deg); }
+}
+
+.nieto-wave {
+  animation: gentleWave 1.8s infinite ease-in-out;
+  transform-origin: 70% 70%;
+}
+
+/* Typing phrase fade transitions */
+@keyframes phraseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes phraseOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.typing-phrase-in {
+  animation: phraseIn 0.4s ease forwards;
+}
+
+.typing-phrase-out {
+  animation: phraseOut 0.3s ease forwards;
+}

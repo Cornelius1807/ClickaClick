@@ -8,6 +8,7 @@ import { ChatBubble } from './components/ChatBubble';
 import { ChatInput } from './components/ChatInput';
 import { SurveySEQ } from './components/SurveySEQ';
 import { SupportButton } from './components/SupportButton';
+import { TypingIndicator } from './components/TypingIndicator';
 import type { ChatMessage, DeviceType } from '@/types';
 
 export default function Home() {
@@ -208,11 +209,7 @@ export default function Home() {
           ))}
 
           {isLoading && (
-            <div className="flex justify-start mb-4">
-              <div className="bg-gray-300 px-4 py-3 rounded-lg">
-                <p className="text-gray-900">Escribiendo...</p>
-              </div>
-            </div>
+            <TypingIndicator fontScale={fontScale} />
           )}
 
           <div ref={messagesEndRef} />
