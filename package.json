@@ -4,7 +4,9 @@
   "private": true,
   "description": "Plataforma de alfabetización digital para adultos mayores en Perú",
   "scripts": {
-    "dev": "pnpm --filter=@clickaclick/frontend dev & pnpm --filter=@clickaclick/backend dev",
+    "dev": "concurrently \"pnpm --filter=@clickaclick/frontend dev\" \"pnpm --filter=@clickaclick/backend dev\"",
+    "dev:frontend": "pnpm --filter=@clickaclick/frontend dev",
+    "dev:backend": "pnpm --filter=@clickaclick/backend dev",
     "build": "pnpm --filter=@clickaclick/frontend build && pnpm --filter=@clickaclick/backend build",
     "start": "pnpm --filter=@clickaclick/backend start",
     "lint": "pnpm --filter=./packages -r exec eslint .",
@@ -20,6 +22,7 @@
   "author": "ClickaClick Team",
   "license": "MIT",
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "^5.3.3"
   },
   "packageManager": "pnpm@8.13.1"

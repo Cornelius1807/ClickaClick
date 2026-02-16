@@ -52,13 +52,7 @@ export async function detectIntent(
   // 2. Intentar coincidencia parcial (uno o más tokens)
   const allPhrases = await prisma.intentPhrase.findMany({
     include: {
-      intent: {
-        where: {
-          deviceScope: {
-            in: [deviceScope, 'all'],
-          },
-        },
-      },
+      intent: true,
     },
   });
 
@@ -69,6 +63,11 @@ export async function detectIntent(
 
   for (const phraseRecord of allPhrases) {
     if (!phraseRecord.intent) continue;
+    
+    // Filtrar por deviceScope
+    if (!['all', deviceScope].includes(phraseRecord.intent.deviceScope)) {
+      continue;
+    }
 
     const similarity = calculateSimilarity(expanded, phraseRecord.phrase);
 
