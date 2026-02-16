@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/lib/store';
@@ -33,6 +33,8 @@ export default function Home() {
     setDarkMode,
     fontScale,
     setFontScale,
+    ttsEnabled,
+    setTtsEnabled,
     scrolledPastWelcome,
     setScrolledPastWelcome,
   } = useAppStore();
@@ -48,6 +50,40 @@ export default function Home() {
   const themeToggleRef = useRef<HTMLButtonElement>(null);
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false);
   const [iconAnimating, setIconAnimating] = useState(false);
+  const ttsEnabledRef = useRef(ttsEnabled);
+
+  // Keep ref in sync
+  useEffect(() => {
+    ttsEnabledRef.current = ttsEnabled;
+  }, [ttsEnabled]);
+
+  // TTS: speak bot messages
+  const speakText = useCallback((text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    // Clean markdown/formatting from text
+    const cleanText = text
+      .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, '. ');
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'es-ES';
+    utterance.rate = 0.95;
+    utterance.pitch = 1.4; // Higher pitch for child-like voice
+
+    // Try to find a Spanish voice
+    const voices = window.speechSynthesis.getVoices();
+    const spanishVoice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes('female'))
+      || voices.find(v => v.lang.startsWith('es'))
+      || voices[0];
+    if (spanishVoice) utterance.voice = spanishVoice;
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
   // Animated dark mode toggle with ripple + sparkles
   const handleThemeToggle = () => {
@@ -108,8 +144,26 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Auto-scroll when messages change, loading state changes, or survey appears
   useEffect(() => {
     scrollToBottom();
+  }, [messages, isLoading, isSEQShown]);
+
+  // Keep scrolling to bottom as long bot message content renders (typewriter effect)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.sender === 'bot') {
+      const interval = setInterval(() => {
+        scrollToBottom();
+      }, 300);
+      // Stop after 10s max (long messages)
+      const timeout = setTimeout(() => clearInterval(interval), 10000);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
+    }
   }, [messages]);
 
   // Inicializar sesión cuando se selecciona dispositivo
@@ -123,19 +177,18 @@ export default function Home() {
           sessionStartTimeRef.current = Date.now();
 
           // Agregar mensaje de bienvenida
+          const welcomeText = `¡Hola! Soy el asistente digital de ClickaClick. Estoy aquí para ayudarte con tu ${deviceSelected === 'ios' ? 'iPhone' : 'celular Android'}. ¿Qué necesitas?`;
           addMessage({
             id: '1',
-            text: `¡Hola! Soy el asistente digital de ClickaClick. Estoy aquí para ayudarte con tu ${deviceSelected === 'ios' ? 'iPhone' : 'celular Android'}. ¿Qué necesitas?`,
+            text: welcomeText,
             sender: 'bot',
             timestamp: Date.now(),
           });
 
-          // Configurar timer para encuesta SEQ a los 300s (5 min)
-          seqTimerRef.current = setTimeout(() => {
-            if (!isSEQShown) {
-              setIsSEQShown(true);
-            }
-          }, 300000);
+          // Speak welcome message
+          if (ttsEnabledRef.current) {
+            setTimeout(() => speakText(welcomeText), 500);
+          }
         } catch (error) {
           console.error('Error creating session:', error);
           alert('Error al iniciar sesión');
@@ -146,11 +199,20 @@ export default function Home() {
     };
 
     initializeSession();
+  }, [deviceSelected, session, createSession, setSession, setIsLoading, addMessage]);
 
-    return () => {
-      if (seqTimerRef.current) clearTimeout(seqTimerRef.current);
-    };
-  }, [deviceSelected, session, createSession, setSession, setIsLoading, addMessage, isSEQShown, setIsSEQShown]);
+  // Timer separado para encuesta SEQ (5 minutos después de crear sesión)
+  useEffect(() => {
+    if (session && !isSEQShown) {
+      seqTimerRef.current = setTimeout(() => {
+        setIsSEQShown(true);
+      }, 300000); // 5 minutos
+
+      return () => {
+        if (seqTimerRef.current) clearTimeout(seqTimerRef.current);
+      };
+    }
+  }, [session, isSEQShown, setIsSEQShown]);
 
   const handleSelectDevice = (device: DeviceType) => {
     setDeviceSelected(device);
@@ -184,6 +246,11 @@ export default function Home() {
         intentName: response.intentName,
       };
       addMessage(botMessage);
+
+      // Speak bot response if TTS is enabled
+      if (ttsEnabledRef.current) {
+        speakText(response.answerText);
+      }
 
       // Si hay typing delay simulado
       if (response.latencyMs > 5000) {
@@ -270,6 +337,29 @@ export default function Home() {
               <span className="font-zoom-label">A+</span>
             </button>
 
+            {/* TTS toggle */}
+            <button
+              onClick={() => {
+                const next = !ttsEnabled;
+                setTtsEnabled(next);
+                if (!next && typeof window !== 'undefined') {
+                  window.speechSynthesis?.cancel();
+                }
+              }}
+              className={`px-2 py-1 rounded font-bold transition-all duration-200 ${
+                ttsEnabled
+                  ? darkMode
+                    ? 'bg-orange-600 text-white hover:bg-orange-500'
+                    : 'bg-white text-orange-600 hover:bg-orange-50 ring-2 ring-orange-300'
+                  : darkMode
+                  ? 'bg-gray-700 text-gray-500 hover:bg-gray-600'
+                  : 'bg-white text-gray-400 hover:bg-gray-50'
+              }`}
+              title={ttsEnabled ? 'Desactivar voz del bot' : 'Activar voz del bot'}
+            >
+              {ttsEnabled ? '🔊' : '🔇'}
+            </button>
+
             <button
               ref={themeToggleRef}
               onClick={handleThemeToggle}
@@ -319,6 +409,16 @@ export default function Home() {
             <TypingIndicator fontScale={fontScale} />
           )}
 
+          {/* SEQ Survey - inline in chat */}
+          {isSEQShown && (
+            <SurveySEQ
+              onSubmit={handleSurveySEQ}
+              onCancel={() => setIsSEQShown(false)}
+              fontScale={fontScale}
+              darkMode={darkMode}
+            />
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -328,6 +428,7 @@ export default function Home() {
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
         fontScale={fontScale}
+        darkMode={darkMode}
       />
 
       {/* Support Button */}
@@ -339,14 +440,6 @@ export default function Home() {
         />
       )}
 
-      {/* SEQ Survey */}
-      {isSEQShown && (
-        <SurveySEQ
-          onSubmit={handleSurveySEQ}
-          onCancel={() => setIsSEQShown(false)}
-          fontScale={fontScale}
-        />
-      )}
     </div>
   );
 }

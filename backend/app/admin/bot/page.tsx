@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 interface Intent {
   id: string;
@@ -23,7 +23,6 @@ export default function AdminBot() {
   const [formData, setFormData] = useState({
     name: '',
     deviceScope: 'all',
-    answerText: '',
     phrases: '',
   });
 
@@ -58,24 +57,25 @@ export default function AdminBot() {
         .map((p) => p.trim())
         .filter((p) => p);
 
+      const payload = {
+        name: formData.name,
+        deviceScope: formData.deviceScope,
+        answerText: '(Gemini genera la respuesta)',
+        phrases,
+      };
+
       if (intentId) {
-        await axios.put(`${BACKEND_URL}/api/admin/intents/${intentId}`, {
-          ...formData,
-          phrases,
-        }, {
+        await axios.put(`${BACKEND_URL}/api/admin/intents/${intentId}`, payload, {
           headers: { 'admin-token': 'authenticated' },
         });
       } else {
-        await axios.post(`${BACKEND_URL}/api/admin/intents`, {
-          ...formData,
-          phrases,
-        }, {
+        await axios.post(`${BACKEND_URL}/api/admin/intents`, payload, {
           headers: { 'admin-token': 'authenticated' },
         });
       }
 
       setEditingId(null);
-      setFormData({ name: '', deviceScope: 'all', answerText: '', phrases: '' });
+      setFormData({ name: '', deviceScope: 'all', phrases: '' });
       fetchIntents();
     } catch (error) {
       console.error('Error saving intent:', error);
@@ -99,20 +99,29 @@ export default function AdminBot() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p>Cargando...</p>
+      <div className="flex items-center justify-center h-screen bg-orange-50">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-lg text-orange-700 font-semibold">Cargando intenciones...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-blue-600 text-white p-6">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
+      <header className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6 shadow-lg">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Editor de Bot - Intenciones</h1>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📝</span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Editor de Intenciones</h1>
+              <p className="text-orange-100 text-sm">Gestiona las intenciones que Gemini utiliza</p>
+            </div>
+          </div>
           <a
             href="/admin/dashboard"
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-800 rounded-lg"
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-xl font-semibold transition-all text-sm border border-white/30"
           >
             ← Volver
           </a>
@@ -120,16 +129,16 @@ export default function AdminBot() {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* New Intent Form */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-bold mb-4">
-            {editingId ? '✏️ Editar' : '➕ Nueva Intención'}
+        {/* New/Edit Intent Form */}
+        <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 mb-8">
+          <h2 className="text-xl font-bold text-gray-800 mb-5 flex items-center gap-2">
+            {editingId ? '✏️ Editar Intención' : '➕ Nueva Intención'}
           </h2>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-gray-700 font-bold mb-2">
-                Nombre
+              <label className="block text-sm font-semibold text-gray-600 mb-1.5">
+                Nombre de la Intención
               </label>
               <input
                 type="text"
@@ -137,13 +146,13 @@ export default function AdminBot() {
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-400 outline-none transition-all"
                 placeholder="Ej: Aumentar brillo"
               />
             </div>
 
             <div>
-              <label className="block text-gray-700 font-bold mb-2">
+              <label className="block text-sm font-semibold text-gray-600 mb-1.5">
                 Alcance del Dispositivo
               </label>
               <select
@@ -151,32 +160,17 @@ export default function AdminBot() {
                 onChange={(e) =>
                   setFormData({ ...formData, deviceScope: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-400 outline-none transition-all bg-white"
               >
-                <option value="all">Todos (Android e iOS)</option>
-                <option value="android">Solo Android</option>
-                <option value="ios">Solo iOS</option>
+                <option value="all">📱 Todos (Android e iOS)</option>
+                <option value="android">🤖 Solo Android</option>
+                <option value="ios">🍎 Solo iOS</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-gray-700 font-bold mb-2">
-                Respuesta
-              </label>
-              <textarea
-                value={formData.answerText}
-                onChange={(e) =>
-                  setFormData({ ...formData, answerText: e.target.value })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                rows={4}
-                placeholder="Respuesta por defecto..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-2">
-                Sinónimos (separados por comas)
+              <label className="block text-sm font-semibold text-gray-600 mb-1.5">
+                Sinónimos / Frases clave (separados por comas)
               </label>
               <input
                 type="text"
@@ -184,17 +178,18 @@ export default function AdminBot() {
                 onChange={(e) =>
                   setFormData({ ...formData, phrases: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                placeholder="brillo, aumentar brillo, pantalla oscura, ..."
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-300 focus:border-orange-400 outline-none transition-all"
+                placeholder="brillo, aumentar brillo, pantalla oscura, subir luminosidad..."
               />
+              <p className="text-xs text-gray-400 mt-1">Estas frases ayudan a asociar videos con las preguntas del usuario</p>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-3 pt-2">
               <button
                 onClick={() => handleSave(editingId || undefined)}
-                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg"
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl transition-all shadow-sm"
               >
-                Guardar
+                {editingId ? 'Actualizar' : 'Guardar'}
               </button>
 
               {editingId && (
@@ -204,11 +199,10 @@ export default function AdminBot() {
                     setFormData({
                       name: '',
                       deviceScope: 'all',
-                      answerText: '',
                       phrases: '',
                     });
                   }}
-                  className="flex-1 px-4 py-2 bg-gray-400 hover:bg-gray-500 text-white font-bold rounded-lg"
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all"
                 >
                   Cancelar
                 </button>
@@ -218,22 +212,39 @@ export default function AdminBot() {
         </div>
 
         {/* Intents List */}
-        <div className="bg-white rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold p-6 border-b">
-            Intenciones ({intents.length})
-          </h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-orange-100">
+          <div className="p-6 border-b border-gray-100">
+            <h2 className="text-xl font-bold text-gray-800">
+              Intenciones <span className="text-orange-500">({intents.length})</span>
+            </h2>
+          </div>
 
-          <div className="divide-y">
+          <div className="divide-y divide-gray-50">
+            {intents.length === 0 && (
+              <div className="p-8 text-center text-gray-400">
+                <span className="text-4xl block mb-2">📭</span>
+                No hay intenciones creadas aún
+              </div>
+            )}
+
             {intents.map((intent) => (
-              <div key={intent.id} className="p-6 hover:bg-gray-50">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">
-                      {intent.name}
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      Alcance: {intent.deviceScope}
-                    </p>
+              <div key={intent.id} className="p-5 hover:bg-orange-50/50 transition-colors">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-sm">
+                      {intent.deviceScope === 'ios' ? '🍎' : intent.deviceScope === 'android' ? '🤖' : '📱'}
+                    </span>
+                    <div>
+                      <h3 className="text-base font-bold text-gray-800">
+                        {intent.name}
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        {intent.deviceScope === 'all' ? 'Todos los dispositivos' : intent.deviceScope === 'ios' ? 'Solo iOS' : 'Solo Android'}
+                        {intent.videos && intent.videos.length > 0 && (
+                          <span className="ml-2 text-green-600">• {intent.videos.length} video(s)</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex gap-2">
@@ -243,37 +254,38 @@ export default function AdminBot() {
                         setFormData({
                           name: intent.name,
                           deviceScope: intent.deviceScope,
-                          answerText: intent.answerText,
                           phrases: intent.phrases
                             .map((p) => p.phrase)
                             .join(', '),
                         });
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                      className="px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-sm font-medium transition-colors"
                     >
                       Editar
                     </button>
 
                     <button
                       onClick={() => handleDelete(intent.id)}
-                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors"
                     >
                       Eliminar
                     </button>
                   </div>
                 </div>
 
-                <p className="text-gray-700 mb-2">{intent.answerText}</p>
-
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {intent.phrases.map((p) => (
                     <span
                       key={p.id}
-                      className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                      className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-full text-xs font-medium border border-orange-200"
                     >
                       {p.phrase}
                     </span>
                   ))}
+                  {intent.phrases.length === 0 && (
+                    <span className="text-xs text-gray-400 italic">Sin sinónimos</span>
+                  )}
                 </div>
               </div>
             ))}

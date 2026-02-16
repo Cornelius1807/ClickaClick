@@ -29,6 +29,9 @@ interface AppStore {
   fontScale: number;
   setFontScale: (scale: number) => void;
 
+  ttsEnabled: boolean;
+  setTtsEnabled: (enabled: boolean) => void;
+
   // Scrolled after welcome
   scrolledPastWelcome: boolean;
   setScrolledPastWelcome: (scrolled: boolean) => void;
@@ -58,6 +61,9 @@ export const useAppStore = create<AppStore>((set) => ({
 
   fontScale: 1,
   setFontScale: (scale) => set({ fontScale: Math.max(0.8, Math.min(2, scale)) }),
+
+  ttsEnabled: true,
+  setTtsEnabled: (enabled) => set({ ttsEnabled: enabled }),
 
   scrolledPastWelcome: false,
   setScrolledPastWelcome: (scrolled) =>

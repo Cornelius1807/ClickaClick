@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 export default function AdminLogin() {
   const [username, setUsername] = useState('');
@@ -39,42 +39,45 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2 text-center">
-          ClickaClick Admin
-        </h1>
-        <p className="text-gray-600 text-center mb-8">Panel de Administración</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-orange-100">
+      <div className="bg-white rounded-2xl shadow-xl border border-orange-100 p-8 max-w-md w-full">
+        <div className="text-center mb-6">
+          <span className="text-5xl block mb-3">🧓</span>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            ClickaClick
+          </h1>
+          <p className="text-gray-500 text-sm">Panel de Administración</p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-gray-700 font-bold mb-2">
+            <label className="block text-sm font-semibold text-gray-600 mb-1.5">
               Usuario
             </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all"
               disabled={loading}
             />
           </div>
 
           <div>
-            <label className="block text-gray-700 font-bold mb-2">
+            <label className="block text-sm font-semibold text-gray-600 mb-1.5">
               Contraseña
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all"
               disabled={loading}
             />
           </div>
@@ -82,13 +85,13 @@ export default function AdminLogin() {
           <button
             type="submit"
             disabled={loading || !username || !password}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-400 transition-colors"
+            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold py-2.5 px-4 rounded-xl disabled:bg-gray-300 disabled:from-gray-300 disabled:to-gray-300 transition-all shadow-sm"
           >
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
 
-        <p className="text-sm text-gray-500 text-center mt-6">
+        <p className="text-xs text-gray-400 text-center mt-6">
           Credenciales por defecto en .env.example
         </p>
       </div>
