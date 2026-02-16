@@ -92,3 +92,260 @@ body {
 .typing-phrase-out {
   animation: phraseOut 0.3s ease forwards;
 }
+
+/* ═══════════════════════════════════════════
+   Dark/Light Mode Transition
+   ═══════════════════════════════════════════ */
+
+/* Circular ripple overlay that expands from toggle button */
+.theme-transition-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: scale(0);
+  opacity: 1;
+}
+
+.theme-transition-overlay.expanding {
+  animation: themeRippleExpand 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.theme-transition-overlay.to-dark {
+  background: radial-gradient(circle, #1f2937 0%, #111827 100%);
+}
+
+.theme-transition-overlay.to-light {
+  background: radial-gradient(circle, #fff8f3 0%, #ffffff 100%);
+}
+
+@keyframes themeRippleExpand {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Sun/Moon toggle icon animations */
+.theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.theme-icon-enter {
+  animation: iconSpinIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.theme-icon-exit {
+  animation: iconSpinOut 0.3s ease-in forwards;
+  position: absolute;
+}
+
+@keyframes iconSpinIn {
+  0% {
+    opacity: 0;
+    transform: rotate(-180deg) scale(0);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@keyframes iconSpinOut {
+  0% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(180deg) scale(0);
+  }
+}
+
+/* Smooth color transitions on main elements during theme switch */
+.theme-smooth-transition,
+.theme-smooth-transition * {
+  transition: background-color 0.5s ease,
+              color 0.4s ease,
+              border-color 0.4s ease,
+              box-shadow 0.4s ease !important;
+}
+
+/* Subtle sparkle particles during transition */
+.theme-sparkle {
+  position: fixed;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10000;
+  animation: sparkleFloat 0.8s ease-out forwards;
+}
+
+.theme-sparkle.to-dark {
+  background: #fbbf24;
+  box-shadow: 0 0 6px 2px rgba(251, 191, 36, 0.6);
+}
+
+.theme-sparkle.to-light {
+  background: #fb923c;
+  box-shadow: 0 0 6px 2px rgba(251, 146, 60, 0.6);
+}
+
+@keyframes sparkleFloat {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--spark-x), var(--spark-y)) scale(0);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   Font Zoom Buttons - Magnifying Glass Effect
+   ═══════════════════════════════════════════ */
+
+.font-zoom-btn {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background-color 0.3s ease,
+              box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.font-zoom-btn:hover {
+  transform: scale(1.12);
+  box-shadow: 0 2px 12px rgba(251, 146, 60, 0.35);
+}
+
+.font-zoom-btn:active {
+  transform: scale(0.92);
+  transition-duration: 0.1s;
+}
+
+/* Magnifying glass icon - hidden by default, appears on hover */
+.font-zoom-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0) rotate(-30deg);
+  opacity: 0;
+  font-size: 18px;
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+  z-index: 2;
+}
+
+.font-zoom-btn:hover .font-zoom-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.15) rotate(0deg);
+}
+
+.font-zoom-btn:active .font-zoom-icon {
+  transform: translate(-50%, -50%) scale(0.9) rotate(10deg);
+}
+
+/* Label text - stays visible, dims on hover */
+.font-zoom-label {
+  position: relative;
+  z-index: 1;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  display: inline-block;
+}
+
+.font-zoom-btn:hover .font-zoom-label {
+  opacity: 0.15;
+  transform: scale(0.85);
+}
+
+.font-zoom-btn:active .font-zoom-label {
+  opacity: 0;
+}
+
+/* Ripple ring on click */
+.font-zoom-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.3);
+  transition: all 0.4s ease;
+  pointer-events: none;
+}
+
+.font-zoom-btn:active::after {
+  opacity: 0.4;
+  transform: translate(-50%, -50%) scale(2.2);
+  transition-duration: 0.15s;
+}
+
+/* ═══════════════════════════════════════════
+   Walking Nieto - Header Stroll Animation
+   ═══════════════════════════════════════════ */
+
+.walking-nieto-wrapper {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  width: 100%;
+  height: 50px;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.walking-nieto {
+  position: absolute;
+  bottom: 0;
+  width: 42px;
+  height: 50px;
+  animation: nietoWalkAcross 30s linear infinite;
+}
+
+@keyframes nietoWalkAcross {
+  0% {
+    left: -50px;
+    transform: scaleX(1);
+  }
+  45% {
+    left: calc(100% + 10px);
+    transform: scaleX(1);
+  }
+  50% {
+    left: calc(100% + 10px);
+    transform: scaleX(-1);
+  }
+  95% {
+    left: -50px;
+    transform: scaleX(-1);
+  }
+  100% {
+    left: -50px;
+    transform: scaleX(1);
+  }
+}
