@@ -22,7 +22,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, fontScale }) =>
           lineHeight: `${20 * fontScale}px`,
         }}
       >
-        <p className="break-words">{message.text}</p>
+        <div className="break-words whitespace-pre-wrap">
+          {message.text}
+        </div>
 
         {isBot && message.videoId && (
           <div className="mt-3">

@@ -30,20 +30,56 @@ export async function POST(request: NextRequest) {
 
     const startTime = Date.now();
 
-    // Detectar intención
-    const detection = await detectIntent(text, device === 'ios' ? 'ios' : 'android');
-
-    // Obtener respuesta
+    // Preparar variables de respuesta
     let answerText = 'Lo sentimos, no entendemos tu pregunta. Intenta de otra manera.';
     let videoId: string | undefined;
     let steps: any[] | undefined;
 
-    if (detection.intentId) {
-      const response = await getIntentResponse(detection.intentId, device);
-      answerText = response.answerText;
-      videoId = response.videoId;
-      if (response.stepsJson) {
-        steps = JSON.parse(response.stepsJson);
+    // Mantener el resultado de la detección para guardar más tarde
+    let detection: {
+      intentId?: string | null;
+      intentName?: string | null;
+      confidence?: number | null;
+    } = { intentId: null, intentName: null, confidence: null };
+
+    if (process.env.GEMINI_API_KEY) {
+      console.log('[CHAT] LLM branch entered');
+      try {
+        const { askGemini } = await import('@/lib/utils/gemini');
+        const deviceName = device === 'ios' ? 'iPhone' : 'Android';
+        const prompt = `Eres el Nieto Virtual de ClickaClick, un asistente tecnico amable para adultos mayores en Peru.
+Dispositivo: ${deviceName}
+Pregunta: "${text}"
+
+INSTRUCCIONES: SIEMPRE responde en formato numerado (1, 2, 3...)
+Maximo 4-5 pasos, cada uno MUY claro y simple.
+1. Usa palabras simples
+2. Habla como nieto/a
+3. En espanol peruano
+4. Si no puedes, ofrece WhatsApp
+
+Respuesta:`;
+        console.log('[CHAT] Calling askGemini...');
+        const llmAnswer = await askGemini(prompt);
+        console.log('[CHAT] Gemini returned len:', llmAnswer?.length);
+        if (llmAnswer && llmAnswer.trim().length > 0) {
+          answerText = llmAnswer;
+        }
+      } catch (e) {
+        console.error('[CHAT] Error calling Gemini:', e);
+      }
+    }
+
+    // Fallback: si LLM no devolvio respuesta, usar bot tradicional
+    if (!answerText || answerText.trim().length === 0) {
+      detection = await detectIntent(text, device === 'ios' ? 'ios' : 'android');
+      if (detection.intentId) {
+        const response = await getIntentResponse(detection.intentId, device);
+        answerText = response.answerText;
+        videoId = response.videoId;
+        if (response.stepsJson) {
+          steps = JSON.parse(response.stepsJson);
+        }
       }
     }
 
@@ -55,8 +91,8 @@ export async function POST(request: NextRequest) {
         sessionId,
         userText: text,
         botText: answerText,
-        intentId: detection.intentId,
-        confidence: detection.confidence,
+        intentId: detection.intentId || undefined,
+        confidence: detection.confidence || undefined,
         latencyMs,
       },
     });

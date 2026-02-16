@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,154 +7,127 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============ SESIONES Y MENSAJES ============
-
 model Session {
-  id            String   @id @default(cuid())
-  userAnonId    String   @db.VarChar(50)
-  device        String   @db.VarChar(20) // "android" o "ios"
-  startedAt     DateTime @default(now())
-  endedAt       DateTime?
-  seqAnswered   Boolean  @default(false)
-  
-  messages      Message[]
-  surveys       SurveySEQ[]
-  
+  id          String      @id @default(cuid())
+  userAnonId  String      @db.VarChar(50)
+  device      String      @db.VarChar(20)
+  startedAt   DateTime    @default(now())
+  endedAt     DateTime?
+  seqAnswered Boolean     @default(false)
+  messages    Message[]
+  surveys     SurveySEQ[]
+
   @@index([userAnonId])
   @@index([startedAt])
 }
 
 model Message {
-  id                    String   @id @default(cuid())
-  sessionId             String
-  session               Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
-  userText              String   @db.Text
-  botText               String   @db.Text
-  
-  intentId              String?
-  intent                Intent?  @relation(fields: [intentId], references: [id], onDelete: SetNull)
-  
-  confidence            Float? // 0.0 - 1.0
-  latencyMs             Int? // tiempo en ms para responder
-  
-  escalatedToWhatsapp   Boolean @default(false)
-  retryCount            Int     @default(0)
-  
-  createdAt             DateTime @default(now())
-  
+  id                  String   @id @default(cuid())
+  sessionId           String
+  userText            String
+  botText             String
+  intentId            String?
+  confidence          Float?
+  latencyMs           Int?
+  escalatedToWhatsapp Boolean  @default(false)
+  retryCount          Int      @default(0)
+  createdAt           DateTime @default(now())
+  intent              Intent?  @relation(fields: [intentId], references: [id])
+  session             Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
   @@index([sessionId])
   @@index([intentId])
   @@index([escalatedToWhatsapp])
 }
 
-// ============ BOT CONFIGURACIÓN ============
-
 model Intent {
-  id            String   @id @default(cuid())
-  name          String   @db.VarChar(100) // "Aumentar brillo", "Contactos"
-  deviceScope   String   @db.VarChar(20) // "all", "android", "ios"
-  answerText    String   @db.Text // respuesta por defecto si no hay video
-  
-  phrases       IntentPhrase[]
-  guides        Guide[]
-  videos        Video[]
-  messages      Message[]
-  
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-  
+  id          String         @id @default(cuid())
+  name        String         @db.VarChar(100)
+  deviceScope String         @db.VarChar(20)
+  answerText  String
+  updatedAt   DateTime       @updatedAt
+  createdAt   DateTime       @default(now())
+  guides      Guide?
+  phrases     IntentPhrase[]
+  messages    Message[]
+  videos      Video[]
+
   @@index([deviceScope])
 }
 
 model IntentPhrase {
-  id            String   @id @default(cuid())
-  intentId      String
-  intent        Intent   @relation(fields: [intentId], references: [id], onDelete: Cascade)
-  
-  phrase        String   @db.VarChar(255) // "aumentar brillo", "celu brillo", etc
-  
-  @@index([intentId])
+  id       String @id @default(cuid())
+  intentId String
+  phrase   String @db.VarChar(255)
+  intent   Intent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+
   @@unique([intentId, phrase])
+  @@index([intentId])
 }
 
 model Guide {
-  id            String   @id @default(cuid())
-  intentId      String   @unique
-  intent        Intent   @relation(fields: [intentId], references: [id], onDelete: Cascade)
-  
-  stepsJson     String   @db.Text // JSON array de pasos
-  // Ej: [{ step: 1, text: "Abre Configuración" }, { step: 2, text: "Toca Pantalla" }]
-  
+  id        String @id @default(cuid())
+  intentId  String @unique
+  stepsJson String
+  intent    Intent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+
   @@index([intentId])
 }
 
 model Video {
-  id            String   @id @default(cuid())
-  intentId      String
-  intent        Intent   @relation(fields: [intentId], references: [id], onDelete: Cascade)
-  
-  device        String   @db.VarChar(20) // "android" o "ios"
-  youtubeId     String?  @db.VarChar(50) // puede ser NULL por ahora
-  title         String   @db.VarChar(255)
+  id              String   @id @default(cuid())
+  intentId        String
+  device          String   @db.VarChar(20)
+  youtubeId       String?  @db.VarChar(50)
+  title           String   @db.VarChar(255)
   durationSeconds Int?
-  
-  createdAt     DateTime @default(now())
-  
+  createdAt       DateTime @default(now())
+  intent          Intent   @relation(fields: [intentId], references: [id], onDelete: Cascade)
+
+  @@unique([intentId, device])
   @@index([intentId])
   @@index([device])
-  @@unique([intentId, device])
 }
 
-// ============ ENCUESTAS (SEQ) ============
-
 model SurveySEQ {
-  id            String   @id @default(cuid())
-  sessionId     String
-  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
-  score         Int      // 1 a 5, o caritas
-  createdAt     DateTime @default(now())
-  
+  id        String   @id @default(cuid())
+  sessionId String
+  score     Int
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
   @@index([sessionId])
   @@index([createdAt])
 }
 
-// ============ SOPORTE HUMANO ============
-
 model SupportConfig {
-  id            String   @id @default(cuid())
-  timezone      String   @db.VarChar(50) @default("America/Lima")
-  hoursJson     String   @db.Text // JSON: { "lunes": { "inicio": "08:00", "fin": "20:00" }, ... }
-  
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
+  id        String   @id @default(cuid())
+  timezone  String   @default("America/Lima") @db.VarChar(50)
+  hoursJson String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 model SupportContact {
-  id            String   @id @default(cuid())
-  name          String   @db.VarChar(100)
-  phoneE164     String   @db.VarChar(20) // +51997624586
-  isActive      Boolean  @default(true)
-  isOnline      Boolean  @default(false)
-  
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-  
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(100)
+  phoneE164 String   @db.VarChar(20)
+  isActive  Boolean  @default(true)
+  isOnline  Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
   @@index([isActive])
   @@index([isOnline])
 }
 
-// ============ ADMIN ============
-
 model BotChangeLog {
-  id            String   @id @default(cuid())
-  adminUser     String   @db.VarChar(100)
-  action        String   @db.VarChar(50) // "create_intent", "update_video", "delete_intent", etc
-  payloadJson   String   @db.Text // Qué cambió
-  
-  createdAt     DateTime @default(now())
-  
+  id          String   @id @default(cuid())
+  adminUser   String   @db.VarChar(100)
+  action      String   @db.VarChar(50)
+  payloadJson String
+  createdAt   DateTime @default(now())
+
   @@index([adminUser])
   @@index([createdAt])
 }

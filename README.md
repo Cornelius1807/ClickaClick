@@ -77,9 +77,11 @@ Editar ackend/.env.local:
 \\\
 # Para desarrollo local con PostgreSQL
 DATABASE_URL="postgresql://usuario:contraseña@localhost:5432/clickaclick"
+# (Si tu servidor requiere SSL, agrega ?sslmode=require de forma similar)
 
-# Para Supabase
-DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-ID].supabase.co:5432/postgres"
+# Para Supabase (requiere SSL en conexiones remotas)
+# include ?sslmode=require at end of URL when using managed hosts like Supabase
+DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-ID].supabase.co:5432/postgres?sslmode=require"
 
 # Admin credentials
 ADMIN_USER=admin
@@ -87,6 +89,13 @@ ADMIN_PASS=Pass_Forte_123!2024
 
 # Timezone
 TIMEZONE=America/Lima
+
+# (Opcional) Gemini LLM
+GEMINI_API_KEY=tu_api_key_de_gemini  # ejemplo: AIzaSy...  
+
+# Para activar el uso del LLM en lugar del bot rule-based,
+# asegura que GEMINI_API_KEY esté presente. La aplicación
+# hará fallback automático al bot clásico si el modelo falla.
 \\\
 
 ### 4. Configurar la base de datos

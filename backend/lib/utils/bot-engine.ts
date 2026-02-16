@@ -41,6 +41,7 @@ export async function detectIntent(
   });
 
   if (exactMatch) {
+    console.log('detectIntent - exact match for', normalized, '=>', exactMatch.intent.name);
     return {
       intentId: exactMatch.intent.id,
       intentName: exactMatch.intent.name,
@@ -71,7 +72,9 @@ export async function detectIntent(
 
     const similarity = calculateSimilarity(expanded, phraseRecord.phrase);
 
-    if (similarity > 0.3) {
+    // Umbral de similitud: aceptar incluso pequeñas coincidencias
+    // con frases cortas como "brillo" dentro de una oración más larga.
+    if (similarity >= 0.15) {
       // Umbral de similitud
       const existing = candidatesMap.get(phraseRecord.intent.id);
       if (!existing || similarity > existing.maxSimilarity) {
@@ -95,6 +98,7 @@ export async function detectIntent(
     }
 
     if (bestMatch.intent) {
+      console.log('detectIntent - similarity match', expanded, '=>', bestMatch.intent.name, 'confidence', bestMatch.similarity);
       return {
         intentId: bestMatch.intent.id,
         intentName: bestMatch.intent.name,

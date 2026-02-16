@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Session start using DATABASE_URL=', process.env.DATABASE_URL);
     const body = await request.json();
     const { device } = body;
 
