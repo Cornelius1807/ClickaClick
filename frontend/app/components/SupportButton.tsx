@@ -45,7 +45,7 @@ export const SupportButton: React.FC<SupportButtonProps> = ({
   };
 
   return (
-    <div className="fixed bottom-36 right-4 z-40">
+    <div className="fixed bottom-52 right-4 z-40">
       <button
         onClick={handleClick}
         disabled={loading}

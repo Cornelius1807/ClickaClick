@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import surveyNietoAnimation from './animations/survey-nieto-animation';
 
 const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 interface ChatInputProps {
   onSendMessage: (text: string) => void;
@@ -18,345 +20,291 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   darkMode = false,
 }) => {
   const [input, setInput] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [audioLevel, setAudioLevel] = useState<number[]>([]);
-  const [showMicWarning, setShowMicWarning] = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const recognitionRef = useRef<any>(null);
-  const silenceTimerRef = useRef<NodeJS.Timeout>();
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const animFrameRef = useRef<number>();
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const isActiveRef = useRef(false);
-  const preRecordingInputRef = useRef('');
-  const accumulatedTranscriptRef = useRef('');
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const preInputRef = useRef('');
 
   const handleSend = () => {
-    if (input.trim()) {
+    if (input.trim() && !isTranscribing) {
       onSendMessage(input);
       setInput('');
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
+      if (inputRef.current) inputRef.current.focus();
     }
   };
 
-  const cleanupResources = () => {
-    // First mark inactive so no restarts happen
-    isActiveRef.current = false;
-
-    if (recognitionRef.current) {
-      // Remove handlers to prevent any callbacks during/after stop
-      recognitionRef.current.onresult = null;
-      recognitionRef.current.onerror = null;
-      recognitionRef.current.onend = null;
-      recognitionRef.current.onstart = null;
-      try { recognitionRef.current.abort(); } catch (e) {}
-      recognitionRef.current = null;
-    }
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = undefined;
-    }
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
+  const cleanup = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-    analyserRef.current = null;
-  };
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    setRecordingTime(0);
+  }, []);
 
-  const stopAll = (cancel: boolean) => {
-    const savedText = accumulatedTranscriptRef.current;
-    cleanupResources();
-    setIsListening(false);
-    setAudioLevel([]);
-    setShowMicWarning(false);
-    setLiveTranscript('');
-    if (cancel) {
-      setInput(preRecordingInputRef.current);
-    } else {
-      // Put the transcribed text in the input (use saved text, even if empty)
-      setInput(savedText || preRecordingInputRef.current);
-    }
-    accumulatedTranscriptRef.current = '';
-  };
+  const transcribeAudio = useCallback(async (audioBlob: Blob) => {
+    setIsTranscribing(true);
+    console.log('[MIC] Sending audio for transcription, size:', audioBlob.size, 'type:', audioBlob.type);
 
-  const runAudioViz = () => {
-    if (!analyserRef.current || !isActiveRef.current) return;
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteFrequencyData(dataArray);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
 
-    const bars = 8;
-    const step = Math.floor(dataArray.length / bars);
-    const levels: number[] = [];
-    for (let i = 0; i < bars; i++) {
-      levels.push(dataArray[i * step] / 255);
-    }
-    setAudioLevel(levels);
-    animFrameRef.current = requestAnimationFrame(runAudioViz);
-  };
+      const response = await fetch(`${BACKEND_URL}/api/transcribe`, {
+        method: 'POST',
+        body: formData,
+      });
 
-  const startRecognition = () => {
-    const SR =
-      typeof window !== 'undefined'
-        ? (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-        : null;
-    if (!SR) return;
-
-    const rec = new SR();
-    rec.lang = 'es-ES';
-    rec.continuous = true;
-    rec.interimResults = true;
-    recognitionRef.current = rec;
-
-    rec.onresult = (event: any) => {
-      if (!isActiveRef.current) return;
-
-      let finalTranscript = '';
-      let interimTranscript = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const r = event.results[i];
-        if (r.isFinal) finalTranscript += r[0].transcript;
-        else interimTranscript += r[0].transcript;
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${response.status}`);
       }
 
-      const text = finalTranscript || interimTranscript;
+      const data = await response.json();
+      const text = data.text?.trim() || '';
+
+      console.log('[MIC] Transcription result:', text);
+
       if (text) {
-        accumulatedTranscriptRef.current = text;
-        setLiveTranscript(text);
-        setShowMicWarning(false);
-        // Reset silence timer on speech
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        setInput(text);
+      } else {
+        // No text detected — restore previous input
+        setInput(preInputRef.current);
       }
-    };
+    } catch (err: any) {
+      console.error('[MIC] Transcription failed:', err);
+      setInput(preInputRef.current);
+      alert('No se pudo transcribir el audio. Intenta de nuevo.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, []);
 
-    rec.onerror = (event: any) => {
-      if (!isActiveRef.current) return;
-      console.error('Speech recognition error:', event.error);
-      // Don't stop on errors — just show warning for no-speech
-      if (event.error === 'no-speech') {
-        setShowMicWarning(true);
-      }
-    };
-
-    rec.onend = () => {
-      // Browser ended recognition internally.
-      // Auto-restart with a NEW instance if user hasn't stopped.
-      if (isActiveRef.current) {
-        // Null out old ref first
-        recognitionRef.current = null;
-        // Longer delay to let Chrome's STT service settle
-        setTimeout(() => {
-          if (isActiveRef.current) {
-            startRecognition();
-          }
-        }, 500);
-      }
-    };
-
+  const startRecording = useCallback(async () => {
     try {
-      rec.start();
-    } catch (e) {
-      console.error('Failed to start recognition:', e);
-      if (isActiveRef.current) {
-        setTimeout(() => {
-          if (isActiveRef.current) startRecognition();
-        }, 1000);
-      }
-    }
-  };
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000,
+        },
+      });
 
-  const handleVoiceInput = async () => {
-    if (isActiveRef.current) {
-      stopAll(false);
-      return;
-    }
+      streamRef.current = stream;
+      preInputRef.current = input;
+      chunksRef.current = [];
 
-    const SR =
-      typeof window !== 'undefined'
-        ? (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-        : null;
-    if (!SR) {
-      alert('Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
-      return;
-    }
+      // Find a supported MIME type
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
 
-    // Get microphone
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+      console.log('[MIC] Using MIME type:', mimeType || 'default');
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          console.log('[MIC] Chunk received, size:', e.data.size);
+        }
+      };
+
+      recorder.onstop = () => {
+        console.log('[MIC] Recording stopped, chunks:', chunksRef.current.length);
+        const allChunks = [...chunksRef.current]; // copy before clearing
+        chunksRef.current = [];
+        mediaRecorderRef.current = null;
+
+        const blob = new Blob(allChunks, {
+          type: recorder.mimeType || 'audio/webm',
+        });
+        console.log('[MIC] Final blob size:', blob.size, 'type:', blob.type);
+
+        if (blob.size > 0) {
+          transcribeAudio(blob);
+        } else {
+          setInput(preInputRef.current);
+        }
+      };
+
+      recorder.onerror = (e: any) => {
+        console.error('[MIC] Recorder error:', e);
+        cleanup();
+        setIsRecording(false);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start(1000); // Collect data every second
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Timer to show recording duration
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+
+      console.log('[MIC] Recording started');
+    } catch (err: any) {
+      console.error('[MIC] getUserMedia failed:', err);
       alert('No se pudo acceder al micrófono. Revisa los permisos de tu navegador.');
-      return;
     }
-    streamRef.current = stream;
+  }, [input, cleanup, transcribeAudio]);
 
-    // Audio analyser
-    const audioCtx = new AudioContext();
-    audioContextRef.current = audioCtx;
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    analyserRef.current = analyser;
+  const stopRecording = useCallback((keepAudio: boolean) => {
+    console.log('[MIC] stopRecording, keep:', keepAudio);
 
-    // Init state
-    preRecordingInputRef.current = input;
-    accumulatedTranscriptRef.current = '';
-    setShowMicWarning(false);
-    setLiveTranscript('');
+    // Stop timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
 
-    // Mark active and show UI
-    isActiveRef.current = true;
-    setIsListening(true);
-
-    // Start viz
-    runAudioViz();
-
-    // Silence timeout
-    silenceTimerRef.current = setTimeout(() => {
-      if (isActiveRef.current && !accumulatedTranscriptRef.current) {
-        setShowMicWarning(true);
-        setTimeout(() => {
-          if (isActiveRef.current && !accumulatedTranscriptRef.current) {
-            stopAll(false);
-          }
-        }, 4000);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (keepAudio) {
+        // Request final data chunk, then stop triggers onstop → transcribeAudio
+        // DO NOT clear chunksRef here — onstop needs them
+        mediaRecorderRef.current.requestData();
+        mediaRecorderRef.current.stop();
+      } else {
+        // Cancel — don't process the audio
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.stop();
+        setInput(preInputRef.current);
+        chunksRef.current = [];
       }
-    }, 20000);
+    }
 
-    // Start recognition
-    startRecognition();
+    // Stop mic stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+
+    // Only clear recorder ref if cancelling; if keeping, onstop handles it
+    if (!keepAudio) {
+      mediaRecorderRef.current = null;
+    }
+
+    setIsRecording(false);
+    setRecordingTime(0);
+  }, []);
+
+  const handleMicClick = () => {
+    if (isRecording) {
+      stopRecording(true); // Listo → keep & transcribe
+    } else if (!isTranscribing) {
+      startRecording();
+    }
   };
 
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      isActiveRef.current = false;
-      cleanupResources();
+      cleanup();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cleanup]);
+
+  const showRecordingUI = isRecording || isTranscribing;
 
   return (
     <div className={`relative ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t`}>
-      {/* Recording UI */}
-      {isListening && (
+      {/* Recording / Transcribing UI */}
+      {showRecordingUI && (
         <div style={{ animation: 'fadeInUp 0.3s ease-out' }}>
           {/* Cancel / Done buttons */}
-          <div className={`flex items-center justify-between px-4 pr-20 pt-3 pb-1 ${
-            darkMode ? 'bg-gray-750' : 'bg-orange-50'
-          }`}>
-            <button
-              onClick={() => stopAll(true)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                darkMode
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 border border-gray-200'
-              }`}
-              style={{ fontSize: `${13 * fontScale}px` }}
-            >
-              ✕ Cancelar
-            </button>
-
-            <button
-              onClick={() => stopAll(false)}
-              className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-bold transition-colors ${
-                darkMode
-                  ? 'bg-orange-600 text-white hover:bg-orange-500'
-                  : 'bg-orange-500 text-white hover:bg-orange-600 shadow-sm'
-              }`}
-              style={{ fontSize: `${13 * fontScale}px` }}
-            >
-              ✓ Listo
-            </button>
-          </div>
-
-          {/* Live transcript display */}
-          {liveTranscript && (
-            <div className={`px-4 py-2 ${darkMode ? 'bg-gray-750' : 'bg-orange-50'}`}>
-              <p
-                className={`italic ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}
-                style={{ fontSize: `${14 * fontScale}px` }}
+          {isRecording && (
+            <div className={`flex items-center justify-between px-4 pt-3 pb-1 ${
+              darkMode ? 'bg-gray-750' : 'bg-orange-50'
+            }`}>
+              <button
+                onClick={() => stopRecording(false)}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  darkMode
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 border border-gray-200'
+                }`}
+                style={{ fontSize: `${13 * fontScale}px` }}
               >
-                &ldquo;{liveTranscript}&rdquo;
-              </p>
+                ✕ Cancelar
+              </button>
+
+              <button
+                onClick={() => stopRecording(true)}
+                className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-bold transition-colors ${
+                  darkMode
+                    ? 'bg-orange-600 text-white hover:bg-orange-500'
+                    : 'bg-orange-500 text-white hover:bg-orange-600 shadow-sm'
+                }`}
+                style={{ fontSize: `${13 * fontScale}px` }}
+              >
+                ✓ Listo
+              </button>
             </div>
           )}
 
-          {/* Wave bars + "Escuchando..." */}
-          <div className={`flex items-center justify-center gap-1 py-2 px-4 ${
-            darkMode ? 'bg-gray-750' : 'bg-orange-50'
-          }`}>
-            <div className="flex items-end gap-0.5 h-8">
-              {audioLevel.length > 0
-                ? audioLevel.map((level, i) => (
-                  <div
-                    key={i}
-                    className="rounded-full transition-all duration-75"
-                    style={{
-                      width: 4,
-                      height: `${Math.max(4, level * 32)}px`,
-                      backgroundColor: level > 0.1
-                        ? (darkMode ? '#fb923c' : '#ea580c')
-                        : (darkMode ? '#6b7280' : '#d1d5db'),
-                      transition: 'height 75ms ease',
-                    }}
-                  />
-                ))
-                : Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-full animate-pulse"
-                    style={{
-                      width: 4,
-                      height: `${8 + Math.sin(Date.now() / 200 + i) * 6}px`,
-                      backgroundColor: darkMode ? '#4b5563' : '#d1d5db',
-                    }}
-                  />
-                ))}
-            </div>
-            <span
-              className={`ml-2 font-medium ${darkMode ? 'text-orange-300' : 'text-orange-600'}`}
-              style={{ fontSize: `${12 * fontScale}px` }}
-            >
-              {showMicWarning ? '' : '🎤 Escuchando...'}
-            </span>
+          {/* Status area */}
+          <div className={`px-4 py-3 ${darkMode ? 'bg-gray-750' : 'bg-orange-50'}`}>
+            {isTranscribing ? (
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                <span
+                  className={`font-medium ${darkMode ? 'text-orange-300' : 'text-orange-600'}`}
+                  style={{ fontSize: `${14 * fontScale}px` }}
+                >
+                  Transcribiendo tu voz...
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-3">
+                <div className="relative">
+                  <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+                  <div className="absolute inset-0 w-4 h-4 bg-red-400 rounded-full animate-ping opacity-50" />
+                </div>
+                <span
+                  className={`font-medium ${darkMode ? 'text-orange-300' : 'text-orange-600'}`}
+                  style={{ fontSize: `${14 * fontScale}px` }}
+                >
+                  🎤 Grabando... {formatTime(recordingTime)}
+                </span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Mic warning with nieto */}
-      {showMicWarning && (
-        <div
-          className={`flex items-center gap-3 px-4 py-2 ${
-            darkMode ? 'bg-gray-750' : 'bg-amber-50'
-          }`}
-          style={{ animation: 'fadeInUp 0.4s ease-out' }}
-        >
-          <div style={{ width: 44, height: 44, flexShrink: 0 }}>
-            <Lottie
-              animationData={surveyNietoAnimation}
-              loop
-              autoplay
-              style={{ width: 44, height: 44 }}
-            />
-          </div>
-          <p
-            className={`text-sm ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}
-            style={{ fontSize: `${12 * fontScale}px` }}
-          >
-            🎤 No escucho nada... ¿Tienes el micrófono activado? También puedes escribir tu pregunta abajo ✍️
-          </p>
+          {/* Hint */}
+          {isRecording && (
+            <div className={`px-4 pb-2 ${darkMode ? 'bg-gray-750' : 'bg-orange-50'}`}>
+              <p
+                className={`text-center ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}
+                style={{ fontSize: `${12 * fontScale}px` }}
+              >
+                Habla ahora y presiona &quot;✓ Listo&quot; cuando termines
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -368,12 +316,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => {
-            if (e.key === 'Enter' && !isLoading) {
+            if (e.key === 'Enter' && !isLoading && !isTranscribing) {
               handleSend();
             }
           }}
-          placeholder={isListening ? 'Habla y tu texto aparecerá aquí...' : 'Escribe tu pregunta...'}
-          disabled={isLoading}
+          placeholder={
+            isRecording
+              ? 'Grabando tu voz...'
+              : isTranscribing
+              ? 'Transcribiendo...'
+              : 'Escribe tu pregunta...'
+          }
+          disabled={isLoading || isRecording || isTranscribing}
           className={`flex-1 px-4 py-2 border rounded-xl focus:outline-none focus:ring-2 transition-colors ${
             darkMode
               ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-orange-500'
@@ -387,11 +341,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* Mic button */}
         <button
-          onClick={handleVoiceInput}
-          disabled={isLoading}
+          onClick={handleMicClick}
+          disabled={isLoading || isTranscribing}
           className={`relative rounded-xl transition-all duration-200 ${
-            isListening
+            isRecording
               ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30 scale-105'
+              : isTranscribing
+              ? 'bg-orange-400 text-white cursor-wait'
               : darkMode
               ? 'bg-gray-700 hover:bg-gray-600 text-orange-300'
               : 'bg-orange-100 hover:bg-orange-200 text-orange-600'
@@ -401,14 +357,22 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             width: `${48 * fontScale}px`,
             height: `${44 * fontScale}px`,
           }}
-          title={isListening ? 'Detener micrófono' : 'Usar micrófono'}
+          title={
+            isRecording
+              ? 'Detener grabación'
+              : isTranscribing
+              ? 'Transcribiendo...'
+              : 'Grabar con micrófono'
+          }
         >
-          {isListening ? (
+          {isRecording ? (
             <span className="animate-pulse">⏹</span>
+          ) : isTranscribing ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
           ) : (
             '🎤'
           )}
-          {isListening && (
+          {isRecording && (
             <span
               className="absolute inset-0 rounded-xl border-2 border-red-400 animate-ping"
               style={{ animationDuration: '1.5s' }}
@@ -419,9 +383,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || !input.trim() || isTranscribing}
           className={`font-bold rounded-xl transition-all duration-200 ${
-            input.trim()
+            input.trim() && !isTranscribing
               ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-md hover:shadow-lg'
               : darkMode
               ? 'bg-gray-700 text-gray-500'
