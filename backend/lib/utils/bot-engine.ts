@@ -150,8 +150,8 @@ export async function getIntentResponse(
   }
 
   // Si no hay video, devolver guía textual
-  if (!response.videoId && intent.guides && intent.guides.length > 0) {
-    response.stepsJson = intent.guides[0].stepsJson;
+  if (!response.videoId && intent.guides) {
+    response.stepsJson = intent.guides.stepsJson;
   }
 
   return response;

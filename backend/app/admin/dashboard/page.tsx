@@ -3,16 +3,30 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 interface Metrics {
   avgSEQ: number;
   resolutionRate: number;
-  recurrenceCount: number;
+  recurrenceRate: number;
+  intentRecognitionRate: number;
   totalSessions: number;
   totalMessages: number;
   escalatedCount: number;
+  unrecognizedCount: number;
 }
 
 interface Alert {
@@ -20,13 +34,32 @@ interface Alert {
   message: string;
 }
 
+interface DeviceData {
+  name: string;
+  value: number;
+}
+
+interface FreqQuestion {
+  name: string;
+  count: number;
+}
+
+const DEVICE_COLORS: Record<string, string> = {
+  ios: '#F97316',
+  android: '#22C55E',
+  desconocido: '#94A3B8',
+};
+
+const PIE_COLORS = ['#F97316', '#22C55E', '#3B82F6', '#8B5CF6', '#EF4444'];
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [deviceDistribution, setDeviceDistribution] = useState<DeviceData[]>([]);
+  const [frequentQuestions, setFrequentQuestions] = useState<FreqQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dateRange, setDateRange] = useState({ from: '7days', to: 'today' });
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('admin_authenticated');
@@ -34,21 +67,19 @@ export default function AdminDashboard() {
       router.push('/admin/login');
       return;
     }
-
     fetchMetrics();
-  }, [dateRange, router]);
+  }, [router]);
 
   const fetchMetrics = async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${BACKEND_URL}/api/admin/metrics`, {
-        headers: {
-          'admin-token': 'authenticated',
-        },
+        headers: { 'admin-token': 'authenticated' },
       });
-
       setMetrics(response.data.metrics);
-      setAlerts(response.data.alerts);
+      setAlerts(response.data.alerts || []);
+      setDeviceDistribution(response.data.deviceDistribution || []);
+      setFrequentQuestions(response.data.frequentQuestions || []);
       setError('');
     } catch (err: any) {
       setError('Error cargando métricas');
@@ -61,6 +92,12 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem('admin_authenticated');
     router.push('/admin/login');
+  };
+
+  // Helper: color de KPI según meta
+  const kpiColor = (value: number, goal: number, invert = false) => {
+    if (invert) return value <= goal ? 'text-green-600' : 'text-red-500';
+    return value >= goal ? 'text-green-600' : 'text-red-500';
   };
 
   if (loading) {
@@ -122,118 +159,232 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Section Title */}
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-800">Métricas principales</h2>
-          <p className="text-gray-500 text-sm">Resumen de la última semana</p>
+        {/* ═══ KPIs PRINCIPALES ═══ */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-800">KPIs del Proyecto</h2>
+          <p className="text-gray-500 text-sm">4 métricas clave — última semana</p>
         </div>
 
         {metrics && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* SEQ Score Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Promedio SEQ
-                </h2>
-                <span className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-lg">⭐</span>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+              {/* KPI 1: Resolución Autónoma */}
+              <div className="bg-white rounded-2xl shadow-sm border border-green-100 p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Resolución Autónoma
+                  </h2>
+                  <span className="w-9 h-9 bg-green-100 rounded-xl flex items-center justify-center text-base">✅</span>
+                </div>
+                <div className={`text-3xl font-bold mb-1 ${kpiColor(metrics.resolutionRate, 80)}`}>
+                  {metrics.resolutionRate}<span className="text-lg text-gray-400">%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      metrics.resolutionRate >= 80
+                        ? 'bg-gradient-to-r from-green-400 to-green-500'
+                        : 'bg-gradient-to-r from-red-400 to-red-500'
+                    }`}
+                    style={{ width: `${Math.min(metrics.resolutionRate, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Meta: &gt;80% sin escalada</p>
               </div>
-              <div className="text-3xl font-bold text-orange-600 mb-2">
-                {metrics.avgSEQ.toFixed(1)}<span className="text-lg text-gray-400">/5</span>
+
+              {/* KPI 2: Reincidencia */}
+              <div className="bg-white rounded-2xl shadow-sm border border-purple-100 p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Reincidencia
+                  </h2>
+                  <span className="w-9 h-9 bg-purple-100 rounded-xl flex items-center justify-center text-base">🔄</span>
+                </div>
+                <div className={`text-3xl font-bold mb-1 ${kpiColor(metrics.recurrenceRate, 50)}`}>
+                  {metrics.recurrenceRate}<span className="text-lg text-gray-400">%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      metrics.recurrenceRate >= 50
+                        ? 'bg-gradient-to-r from-purple-400 to-purple-500'
+                        : 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                    }`}
+                    style={{ width: `${Math.min(metrics.recurrenceRate, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Meta: &gt;50% vuelven otro día</p>
               </div>
-              <div className="w-full bg-orange-100 rounded-full h-2">
-                <div
-                  className="bg-gradient-to-r from-orange-400 to-orange-500 h-2 rounded-full transition-all"
-                  style={{ width: `${(metrics.avgSEQ / 5) * 100}%` }}
-                />
+
+              {/* KPI 3: SEQ */}
+              <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Facilidad SEQ
+                  </h2>
+                  <span className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center text-base">⭐</span>
+                </div>
+                <div className={`text-3xl font-bold mb-1 ${kpiColor(metrics.avgSEQ, 4)}`}>
+                  {metrics.avgSEQ.toFixed(1)}<span className="text-lg text-gray-400">/5</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      metrics.avgSEQ >= 4
+                        ? 'bg-gradient-to-r from-orange-400 to-orange-500'
+                        : 'bg-gradient-to-r from-red-400 to-red-500'
+                    }`}
+                    style={{ width: `${(metrics.avgSEQ / 5) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Meta: promedio ≥4.0/5</p>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Facilidad de uso percibida</p>
+
+              {/* KPI 4: Reconocimiento de Intención */}
+              <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Reconocimiento
+                  </h2>
+                  <span className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center text-base">🧠</span>
+                </div>
+                <div className={`text-3xl font-bold mb-1 ${kpiColor(metrics.intentRecognitionRate, 80)}`}>
+                  {metrics.intentRecognitionRate}<span className="text-lg text-gray-400">%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      metrics.intentRecognitionRate >= 80
+                        ? 'bg-gradient-to-r from-blue-400 to-blue-500'
+                        : 'bg-gradient-to-r from-red-400 to-red-500'
+                    }`}
+                    style={{ width: `${Math.min(metrics.intentRecognitionRate, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Meta: &gt;80% intenciones detectadas</p>
+              </div>
             </div>
 
-            {/* Resolution Rate Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-green-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Tasa de Resolución
-                </h2>
-                <span className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-lg">✅</span>
+            {/* ═══ ESTADÍSTICAS GENERALES ═══ */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <span className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-lg">👥</span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{metrics.totalSessions}</p>
+                  <p className="text-xs text-gray-500">Sesiones</p>
+                </div>
               </div>
-              <div className="text-3xl font-bold text-green-600 mb-2">
-                {metrics.resolutionRate}<span className="text-lg text-gray-400">%</span>
+              <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <span className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-lg">💬</span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{metrics.totalMessages}</p>
+                  <p className="text-xs text-gray-500">Mensajes</p>
+                </div>
               </div>
-              <div className="w-full bg-green-100 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    metrics.resolutionRate >= 70
-                      ? 'bg-gradient-to-r from-green-400 to-green-500'
-                      : 'bg-gradient-to-r from-red-400 to-red-500'
-                  }`}
-                  style={{ width: `${metrics.resolutionRate}%` }}
-                />
+              <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <span className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-lg">🆘</span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{metrics.escalatedCount}</p>
+                  <p className="text-xs text-gray-500">Escaladas</p>
+                </div>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Resueltos sin escalada</p>
+              <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
+                <span className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center text-lg">❓</span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{metrics.unrecognizedCount}</p>
+                  <p className="text-xs text-gray-500">No reconocidas</p>
+                </div>
+              </div>
             </div>
 
-            {/* Recurrence Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-purple-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Reincidencia
-                </h2>
-                <span className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-lg">🔄</span>
+            {/* ═══ GRÁFICOS ═══ */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+              {/* Distribución por dispositivo */}
+              <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                  📱 Distribución por Dispositivo
+                </h3>
+                {deviceDistribution.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie
+                        data={deviceDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={90}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, percent }: any) =>
+                          `${name === 'ios' ? 'iPhone' : name === 'android' ? 'Android' : name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                        }
+                      >
+                        {deviceDistribution.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={DEVICE_COLORS[entry.name] || PIE_COLORS[index % PIE_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: any) => [`${value} sesiones`, 'Cantidad']}
+                      />
+                      <Legend
+                        formatter={(value: any) =>
+                          value === 'ios' ? '🍎 iPhone' : value === 'android' ? '🤖 Android' : value
+                        }
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[250px] flex items-center justify-center text-gray-400">
+                    <p>Sin datos de dispositivos esta semana</p>
+                  </div>
+                )}
               </div>
-              <div className="text-3xl font-bold text-purple-600">
-                {metrics.recurrenceCount.toFixed(1)}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Usuarios por día promedio</p>
-            </div>
 
-            {/* Total Sessions Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Sesiones
-                </h2>
-                <span className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-lg">👥</span>
+              {/* Preguntas frecuentes */}
+              <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                  🔥 Preguntas Más Frecuentes
+                </h3>
+                {frequentQuestions.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart
+                      data={frequentQuestions}
+                      layout="vertical"
+                      margin={{ left: 10, right: 20 }}
+                    >
+                      <XAxis type="number" allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={120}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <Tooltip
+                        formatter={(value: any) => [`${value} veces`, 'Consultas']}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="#F97316"
+                        radius={[0, 6, 6, 0]}
+                        barSize={20}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[250px] flex items-center justify-center text-gray-400">
+                    <p>Sin preguntas detectadas esta semana</p>
+                  </div>
+                )}
               </div>
-              <div className="text-3xl font-bold text-blue-600">
-                {metrics.totalSessions}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Total esta semana</p>
             </div>
-
-            {/* Total Messages Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Mensajes
-                </h2>
-                <span className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-lg">💬</span>
-              </div>
-              <div className="text-3xl font-bold text-orange-600">
-                {metrics.totalMessages}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Interacciones usuario-bot</p>
-            </div>
-
-            {/* Escalated Messages Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Escaladas
-                </h2>
-                <span className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-lg">🆘</span>
-              </div>
-              <div className="text-3xl font-bold text-red-500">
-                {metrics.escalatedCount}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Derivados a soporte humano</p>
-            </div>
-          </div>
+          </>
         )}
 
-        {/* Navigation Links */}
-        <div className="mt-10">
+        {/* ═══ NAVEGACIÓN ═══ */}
+        <div className="mt-2">
           <h2 className="text-xl font-bold text-gray-800 mb-1">Gestión</h2>
           <p className="text-gray-500 text-sm mb-5">Administra el contenido del bot</p>
 
@@ -300,7 +451,7 @@ export default function AdminDashboard() {
                     Exportar Encuestas
                   </h3>
                   <p className="text-gray-500 text-sm">
-                    Descarga datos SEQ en CSV o Excel
+                    Descarga datos SEQ en CSV o JSON
                   </p>
                 </div>
               </div>
