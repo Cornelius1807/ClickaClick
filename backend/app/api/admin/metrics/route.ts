@@ -60,33 +60,38 @@ export async function GET(request: NextRequest) {
     ).length;
 
     // ── 5. Tasa de Reincidencia ──
-    // % de usuarios que regresaron en un día diferente
-    const userDays: Record<string, Set<string>> = {};
+    // % de usuarios que tienen más de 1 sesión (mismo día o diferente)
+    const userSessionCount: Record<string, number> = {};
     for (const session of sessions) {
-      const day = new Date(session.startedAt).toISOString().split('T')[0];
-      if (!userDays[session.userAnonId]) {
-        userDays[session.userAnonId] = new Set();
-      }
-      userDays[session.userAnonId].add(day);
+      userSessionCount[session.userAnonId] = (userSessionCount[session.userAnonId] || 0) + 1;
     }
 
-    const totalUniqueUsers = Object.keys(userDays).length;
-    const returningUsers = Object.values(userDays).filter(
-      (days) => days.size > 1
+    const totalUniqueUsers = Object.keys(userSessionCount).length;
+    const returningUsers = Object.values(userSessionCount).filter(
+      (count) => count > 1
     ).length;
     const recurrenceRate =
       totalUniqueUsers > 0
         ? Math.round((returningUsers / totalUniqueUsers) * 100)
         : 0;
 
-    // ── 6. Tasa de Reconocimiento de Intención ──
-    // Mensajes donde el bot detectó una intención (intentId != null)
-    const recognizedMessages = allMessages.filter(
-      (m) => m.intentId !== null
+    // ── 6. Tasa de Reconocimiento ──
+    // Preguntas entendidas a la primera: mensajes donde el bot respondió
+    // exitosamente (no usó el mensaje fallback ni fue escalado)
+    const FALLBACK_MSG = 'Lo sentimos, no entendemos tu pregunta. Intenta de otra manera.';
+    const totalUserQuestions = allMessages.filter(
+      (m) => m.userText && m.userText.trim().length > 0
+    ).length;
+    const understoodQuestions = allMessages.filter(
+      (m) =>
+        m.userText &&
+        m.userText.trim().length > 0 &&
+        m.botText !== FALLBACK_MSG &&
+        !m.escalatedToWhatsapp
     ).length;
     const intentRecognitionRate =
-      totalMessages > 0
-        ? Math.round((recognizedMessages / totalMessages) * 100)
+      totalUserQuestions > 0
+        ? Math.round((understoodQuestions / totalUserQuestions) * 100)
         : 0;
 
     // ── 7. Distribución por dispositivo ──
@@ -145,7 +150,7 @@ export async function GET(request: NextRequest) {
     if (intentRecognitionRate < 80) {
       alerts.push({
         level: 'warning',
-        message: `Reconocimiento de intención ${intentRecognitionRate}% (meta: >80%)`,
+        message: `Reconocimiento de preguntas ${intentRecognitionRate}% (meta: >80%)`,
       });
     }
     if (avgSEQ > 0 && avgSEQ < 4) {

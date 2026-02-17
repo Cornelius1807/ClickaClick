@@ -42,65 +42,86 @@ export async function POST(request: NextRequest) {
       confidence?: number | null;
     } = { intentId: null, intentName: null, confidence: null };
 
-    // Step 1: Try to detect intent using bot-engine (for video matching)
+    // Step 1: Try to detect intent using bot-engine
     const deviceScope = device === 'ios' ? 'ios' : 'android';
     detection = await detectIntent(text, deviceScope);
 
-    // Step 2: Check if there's a video for this intent + device
-    let matchedVideo: { youtubeId: string | null; title: string } | null = null;
-    if (detection.intentId) {
-      const video = await prisma.video.findFirst({
-        where: {
-          intentId: detection.intentId,
-          device: deviceScope,
-        },
-        select: { youtubeId: true, title: true },
-      });
-      if (video && video.youtubeId) {
-        matchedVideo = video;
-      }
-    }
+    // Step 2: Fetch ALL available videos for this device (for Gemini matching)
+    const availableVideos = await prisma.video.findMany({
+      where: {
+        device: deviceScope,
+        youtubeId: { not: null },
+      },
+      include: {
+        intent: { select: { name: true } },
+      },
+    });
+    console.log(`[CHAT] Available videos for ${deviceScope}:`, availableVideos.map((v: any) => `${v.title} (${v.intent?.name})`));
 
-    // Step 3: Call Gemini with video context if available
+    // Step 3: Call Gemini — let IT decide which video matches (if any)
     if (process.env.GEMINI_API_KEY) {
       console.log('[CHAT] LLM branch entered');
       try {
         const { askGemini } = await import('@/lib/utils/gemini');
         const deviceName = device === 'ios' ? 'iPhone' : 'Android';
 
-        let videoInstruction = '';
-        if (matchedVideo) {
-          videoInstruction = `
-IMPORTANTE: Existe un video tutorial titulado "${matchedVideo.title}" que explica exactamente esto.
-Tu respuesta debe PRIMERO recomendar que vean el video que aparecerá abajo del mensaje.
-Luego ofrece que si no entienden el video, pueden escribirte de nuevo y les das los pasos escritos.
-Ejemplo: "¡Abuelito/a! Tengo un video que te muestra exactamente cómo hacerlo. Míralo aquí abajito 👇 Si después de verlo todavía tienes dudas, escríbeme y te explico paso a paso."
-NO des los pasos escritos si hay video. Solo recomienda el video.`;
+        // Build video catalog for Gemini
+        let videoCatalog = '';
+        if (availableVideos.length > 0) {
+          const videoList = availableVideos.map((v: any, i: number) =>
+            `  ${i + 1}. ID="${v.youtubeId}" | Tema: "${v.intent?.name || 'Sin tema'}" | Titulo: "${v.title}"`
+          ).join('\n');
+          videoCatalog = `
+CATALOGO DE VIDEOS DISPONIBLES para ${deviceName}:
+${videoList}
+
+REGLA CRITICA SOBRE VIDEOS:
+- Si la pregunta del usuario se relaciona con CUALQUIERA de los videos del catalogo, DEBES responder SOLO recomendando el video.
+- NO des pasos escritos si hay un video relacionado.
+- Incluye EXACTAMENTE esta etiqueta al FINAL de tu respuesta: [VIDEO:ID_DEL_VIDEO] (reemplaza ID_DEL_VIDEO con el ID real del video que corresponde).
+- Tu respuesta debe ser algo como: "¡Abuelito/a! Tengo un video que te muestra exactamente cómo hacerlo. Míralo aquí abajito y si después de verlo todavía tienes dudas, escríbeme y te explico paso a paso."
+- Solo da pasos escritos si NINGUN video del catalogo se relaciona con la pregunta.`;
         }
 
         const prompt = `Eres el Nieto Virtual de ClickaClick, un asistente tecnico amable para adultos mayores en Peru.
 Dispositivo: ${deviceName}
-Pregunta: "${text}"
-${videoInstruction}
+Pregunta del usuario: "${text}"
+${videoCatalog}
 
-INSTRUCCIONES:
-${matchedVideo ? '- Recomienda ver el video tutorial que aparece junto a tu mensaje' : '- SIEMPRE responde en formato numerado (1, 2, 3...)\n- Maximo 4-5 pasos, cada uno MUY claro y simple.'}
-1. Usa palabras simples
-2. Habla como nieto/a carinoso
-3. En espanol peruano
-4. Si no puedes responder, ofrece WhatsApp
+INSTRUCCIONES GENERALES:
+1. Usa palabras simples, habla como un nieto/a carinoso
+2. En espanol peruano
+3. Si no puedes responder, ofrece contactar por WhatsApp
+${availableVideos.length > 0 ? '4. PRIORIDAD: Si hay video relacionado, SIEMPRE recomienda el video primero (NO des pasos). Incluye [VIDEO:ID] al final.' : '4. Responde en formato numerado (1, 2, 3...) con maximo 4-5 pasos claros y simples.'}
 
 Respuesta:`;
         console.log('[CHAT] Calling askGemini...');
         const llmAnswer = await askGemini(prompt);
         console.log('[CHAT] Gemini returned len:', llmAnswer?.length);
-        if (llmAnswer && llmAnswer.trim().length > 0) {
-          answerText = llmAnswer;
-        }
+        console.log('[CHAT] Gemini raw answer:', llmAnswer?.substring(0, 300));
 
-        // Set videoId if video exists
-        if (matchedVideo && matchedVideo.youtubeId) {
-          videoId = matchedVideo.youtubeId;
+        if (llmAnswer && llmAnswer.trim().length > 0) {
+          // Extract [VIDEO:ID] tag if present
+          const videoTagMatch = llmAnswer.match(/\[VIDEO:([^\]]+)\]/);
+          if (videoTagMatch) {
+            const matchedYoutubeId = videoTagMatch[1].trim();
+            // Verify this ID exists in our catalog
+            const matchedVid = availableVideos.find((v: any) => v.youtubeId === matchedYoutubeId);
+            if (matchedVid) {
+              videoId = matchedYoutubeId;
+              // Also set the intentId from the matched video for metrics
+              if (!detection.intentId && matchedVid.intentId) {
+                detection.intentId = matchedVid.intentId;
+                detection.intentName = matchedVid.intent?.name || null;
+                detection.confidence = 0.9;
+              }
+              console.log(`[CHAT] Gemini matched video: ${matchedVid.title} (${matchedYoutubeId})`);
+            }
+            // Remove the tag from the displayed answer
+            answerText = llmAnswer.replace(/\s*\[VIDEO:[^\]]+\]\s*/g, '').trim();
+          } else {
+            answerText = llmAnswer;
+          }
         }
       } catch (e) {
         console.error('[CHAT] Error calling Gemini:', e);
