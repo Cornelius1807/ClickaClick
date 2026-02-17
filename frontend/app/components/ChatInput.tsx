@@ -4,7 +4,6 @@ import surveyNietoAnimation from './animations/survey-nieto-animation';
 
 const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 interface ChatInputProps {
   onSendMessage: (text: string) => void;
@@ -60,7 +59,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
 
-      const response = await fetch(`${BACKEND_URL}/api/transcribe`, {
+      const response = await fetch(`/api/transcribe`, {
         method: 'POST',
         body: formData,
       });

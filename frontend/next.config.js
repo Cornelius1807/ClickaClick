@@ -6,7 +6,11 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   env: {
-    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001',
+    DATABASE_URL: process.env.DATABASE_URL,
+    ADMIN_USER: process.env.ADMIN_USER,
+    ADMIN_PASS: process.env.ADMIN_PASS,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    TIMEZONE: process.env.TIMEZONE || 'America/Lima',
   },
 };
 

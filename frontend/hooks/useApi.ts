@@ -1,11 +1,12 @@
 import { useCallback } from 'react';
 import type { DeviceType, Session, SupportStatus } from '@/types';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+// API is now same-origin (no separate backend), use relative paths
+const API_BASE = '';
 
 export function useSession() {
   const createSession = useCallback(async (device: DeviceType): Promise<Session> => {
-    const response = await fetch(`${BACKEND_URL}/api/session/start`, {
+    const response = await fetch(`${API_BASE}/api/session/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device }),
@@ -25,7 +26,7 @@ export function useChat() {
       device: DeviceType,
       text: string
     ) => {
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, device, text }),
@@ -42,7 +43,7 @@ export function useChat() {
 
 export function useVideos() {
   const getVideos = useCallback(async (device: DeviceType) => {
-    const response = await fetch(`${BACKEND_URL}/api/videos?device=${device}`);
+    const response = await fetch(`${API_BASE}/api/videos?device=${device}`);
     if (!response.ok) throw new Error('Failed to fetch videos');
     return response.json();
   }, []);
@@ -52,7 +53,7 @@ export function useVideos() {
 
 export function useSurvey() {
   const submitSurveySEQ = useCallback(async (sessionId: string, score: number) => {
-    const response = await fetch(`${BACKEND_URL}/api/survey/seq`, {
+    const response = await fetch(`${API_BASE}/api/survey/seq`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, score }),
@@ -67,7 +68,7 @@ export function useSurvey() {
 
 export function useSupport() {
   const getAvailability = useCallback(async (): Promise<SupportStatus> => {
-    const response = await fetch(`${BACKEND_URL}/api/support/availability`);
+    const response = await fetch(`${API_BASE}/api/support/availability`);
     if (!response.ok) throw new Error('Failed to fetch support availability');
     return response.json();
   }, []);
@@ -75,8 +76,8 @@ export function useSupport() {
   const getRoute = useCallback(
     async (sessionId?: string): Promise<SupportStatus> => {
       const url = sessionId
-        ? `${BACKEND_URL}/api/support/route?sessionId=${sessionId}`
-        : `${BACKEND_URL}/api/support/route`;
+        ? `${API_BASE}/api/support/route?sessionId=${sessionId}`
+        : `${API_BASE}/api/support/route`;
 
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch support route');
