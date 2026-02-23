@@ -15,6 +15,7 @@ import { SurveySEQ } from './components/SurveySEQ';
 import { SupportButton } from './components/SupportButton';
 import { TypingIndicator } from './components/TypingIndicator';
 import { SuggestedQuestions } from './components/SuggestedQuestions';
+import { Videoteca } from './components/Videoteca';
 import type { ChatMessage, DeviceType } from '@/types';
 
 export default function Home() {
@@ -50,6 +51,7 @@ export default function Home() {
   const themeToggleRef = useRef<HTMLButtonElement>(null);
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false);
   const [iconAnimating, setIconAnimating] = useState(false);
+  const [videotecaOpen, setVideotecaOpen] = useState(false);
   const ttsEnabledRef = useRef(ttsEnabled);
 
   // Keep ref in sync
@@ -57,7 +59,7 @@ export default function Home() {
     ttsEnabledRef.current = ttsEnabled;
   }, [ttsEnabled]);
 
-  // TTS: speak bot messages
+  // TTS: speak bot messages — warm, human-sounding voice
   const speakText = useCallback((text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     // Cancel any ongoing speech
@@ -71,16 +73,46 @@ export default function Home() {
       .replace(/\n/g, '. ');
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'es-ES';
-    utterance.rate = 0.95;
-    utterance.pitch = 1.4; // Higher pitch for child-like voice
+    utterance.lang = 'es-419'; // Latin American Spanish
+    utterance.rate = 0.92;     // Slightly slower for clarity
+    utterance.pitch = 1.05;    // Natural pitch, warm tone
 
-    // Try to find a Spanish voice
+    // Pick the best available Spanish voice (prioritize premium/neural voices)
     const voices = window.speechSynthesis.getVoices();
-    const spanishVoice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes('female'))
-      || voices.find(v => v.lang.startsWith('es'))
-      || voices[0];
-    if (spanishVoice) utterance.voice = spanishVoice;
+    const spanishVoices = voices.filter(v => v.lang.startsWith('es'));
+
+    // Preferred voices ordered by quality — neural/premium first
+    const PREFERRED = [
+      'paulina',    // macOS premium (es-MX) — very natural
+      'mónica',     // macOS (es-ES)
+      'monica',     // macOS fallback
+      'google español latinoamérica', // Chrome (es-419)
+      'google español',               // Chrome (es-ES)
+      'microsoft sabina',             // Windows 11 neural (es-MX)
+      'microsoft dalia',              // Windows 11 neural (es-MX)
+      'microsoft elena',              // Windows (es-ES)
+      'eddy',       // macOS Siri voice
+      'flo',        // macOS Siri voice
+      'grandma',    // macOS Siri voice — warm and friendly
+      'reed',       // macOS Siri voice
+      'sandy',      // macOS Siri voice
+    ];
+
+    let bestVoice: SpeechSynthesisVoice | null = null;
+    for (const pref of PREFERRED) {
+      const match = spanishVoices.find(v => v.name.toLowerCase().includes(pref));
+      if (match) { bestVoice = match; break; }
+    }
+
+    // Fallback: any Latin American Spanish, then any Spanish, then first available
+    if (!bestVoice) {
+      bestVoice = spanishVoices.find(v => v.lang === 'es-419' || v.lang === 'es-MX')
+        || spanishVoices.find(v => v.lang.startsWith('es'))
+        || voices[0]
+        || null;
+    }
+
+    if (bestVoice) utterance.voice = bestVoice;
 
     window.speechSynthesis.speak(utterance);
   }, []);
@@ -299,15 +331,30 @@ export default function Home() {
           </div>
         </div>
         <div className="flex justify-between items-center max-w-4xl mx-auto px-4">
-          <Image
-            src="/images/logo.png"
-            alt="ClickaClick"
-            width={320}
-            height={90}
-            className="object-contain brightness-0 invert"
-            style={{ width: 'auto', height: '72px' }}
-            priority
-          />
+          <div className="flex items-center gap-3">
+            {/* Hamburger — Videoteca */}
+            <button
+              className={`videoteca-hamburger ${videotecaOpen ? 'active' : ''}`}
+              onClick={() => setVideotecaOpen(!videotecaOpen)}
+              aria-label="Abrir videoteca"
+              title="Videoteca de tutoriales"
+            >
+              <span className="videoteca-hamburger-line" />
+              <span className="videoteca-hamburger-line" />
+              <span className="videoteca-hamburger-line" />
+              <span className="videoteca-hamburger-pulse" />
+            </button>
+
+            <Image
+              src="/images/logo.png"
+              alt="ClickaClick"
+              width={320}
+              height={90}
+              className="object-contain brightness-0 invert"
+              style={{ width: 'auto', height: '72px' }}
+              priority
+            />
+          </div>
 
           <div className="flex gap-3">
             {/* Controles de accesibilidad */}
@@ -422,6 +469,16 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Videoteca drawer */}
+      <Videoteca
+        isOpen={videotecaOpen}
+        onClose={() => setVideotecaOpen(false)}
+        device={deviceSelected}
+        darkMode={darkMode}
+        fontScale={fontScale}
+        onSendVideoQuestion={handleSendMessage}
+      />
 
       {/* Chat Input */}
       <ChatInput
